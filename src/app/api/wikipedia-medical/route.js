@@ -69,25 +69,169 @@ export async function POST(request) {
       }
     } else if (question) {
       analysisType = "question";
-      // Extract key medical terms from the question
-      const questionWords = question.toLowerCase().split(" ");
-      const medicalKeywords = questionWords.filter(
-        (word) =>
-          word.length > 4 &&
-          ![
-            "what",
-            "when",
-            "where",
-            "which",
-            "should",
-            "could",
-            "would",
-          ].includes(word),
-      );
-      searchTerms = medicalKeywords.slice(0, 3);
 
-      if (searchTerms.length === 0) {
-        searchTerms.push("medical condition", "health");
+      // Improved medical question processing
+      const questionLower = question.toLowerCase();
+
+      // Common medical conditions and terms
+      const medicalConditions = [
+        "diabetes",
+        "hypertension",
+        "cancer",
+        "heart disease",
+        "stroke",
+        "alzheimer",
+        "parkinson",
+        "multiple sclerosis",
+        "arthritis",
+        "asthma",
+        "copd",
+        "depression",
+        "anxiety",
+        "migraine",
+        "epilepsy",
+        "obesity",
+        "osteoporosis",
+        "thyroid",
+        "kidney disease",
+        "liver disease",
+        "pneumonia",
+        "tuberculosis",
+        "hepatitis",
+        "hiv",
+        "aids",
+        "lupus",
+        "fibromyalgia",
+        "crohn",
+        "ulcerative colitis",
+        "celiac",
+        "autism",
+        "adhd",
+        "schizophrenia",
+        "bipolar",
+        "dementia",
+        "als",
+        "huntington",
+        "muscular dystrophy",
+        "cerebral palsy",
+      ];
+
+      // Find medical conditions mentioned in the question
+      const mentionedConditions = medicalConditions.filter((condition) =>
+        questionLower.includes(condition),
+      );
+
+      // Check if it's a treatment-related question
+      const isTreatmentQuestion =
+        questionLower.includes("treatment") ||
+        questionLower.includes("treat") ||
+        questionLower.includes("cure") ||
+        questionLower.includes("therapy") ||
+        questionLower.includes("medication") ||
+        questionLower.includes("medicine") ||
+        questionLower.includes("drug") ||
+        questionLower.includes("surgery") ||
+        questionLower.includes("operation");
+
+      // Check if it's a prevention question
+      const isPreventionQuestion =
+        questionLower.includes("prevent") ||
+        questionLower.includes("prevention") ||
+        questionLower.includes("avoid") ||
+        questionLower.includes("reduce risk");
+
+      // Check if it's a symptoms question
+      const isSymptomsQuestion =
+        questionLower.includes("symptom") ||
+        questionLower.includes("sign") ||
+        questionLower.includes("what are the") ||
+        questionLower.includes("how do you know");
+
+      // Build search terms based on question type and mentioned conditions
+      if (mentionedConditions.length > 0) {
+        // If specific conditions are mentioned, search for them
+        searchTerms = mentionedConditions.slice(0, 2); // Limit to 2 conditions
+
+        // Add specific search terms based on question type
+        if (isTreatmentQuestion) {
+          searchTerms = searchTerms.map(
+            (condition) => `${condition} treatment`,
+          );
+        } else if (isPreventionQuestion) {
+          searchTerms = searchTerms.map(
+            (condition) => `${condition} prevention`,
+          );
+        } else if (isSymptomsQuestion) {
+          searchTerms = searchTerms.map((condition) => `${condition} symptoms`);
+        }
+      } else {
+        // No specific conditions mentioned, try to extract key medical terms
+        const medicalKeywords = [
+          "blood pressure",
+          "blood sugar",
+          "cholesterol",
+          "heart rate",
+          "blood test",
+          "vaccination",
+          "immunization",
+          "antibiotic",
+          "virus",
+          "bacteria",
+          "infection",
+          "inflammation",
+          "immune system",
+          "metabolism",
+          "hormone",
+          "insulin",
+          "thyroid",
+          "vitamin",
+          "mineral",
+          "nutrition",
+          "diet",
+          "exercise",
+          "sleep",
+          "stress",
+          "mental health",
+          "physical therapy",
+          "rehabilitation",
+          "diagnosis",
+          "prognosis",
+        ];
+
+        const foundKeywords = medicalKeywords.filter((keyword) =>
+          questionLower.includes(keyword),
+        );
+
+        if (foundKeywords.length > 0) {
+          searchTerms = foundKeywords.slice(0, 2);
+        } else {
+          // Fallback: extract meaningful words but filter better
+          const questionWords = questionLower.split(" ");
+          const meaningfulWords = questionWords.filter(
+            (word) =>
+              word.length > 5 && // Longer words more likely to be meaningful
+              ![
+                "what",
+                "when",
+                "where",
+                "which",
+                "should",
+                "could",
+                "would",
+                "about",
+                "treatment",
+                "symptom",
+                "condition",
+                "disease",
+              ].includes(word),
+          );
+
+          if (meaningfulWords.length > 0) {
+            searchTerms = meaningfulWords.slice(0, 2);
+          } else {
+            searchTerms = ["general medicine", "health information"];
+          }
+        }
       }
     }
 
