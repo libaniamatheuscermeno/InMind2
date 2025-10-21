@@ -159,7 +159,7 @@ const translations = {
       {
         question: "O que devo fazer após obter os resultados?",
         answer:
-          "Use os resultados como ponto de partida para discussão com profissionais de saúde. Agende consultas com especialistas recomendados para avaliação adequada.",
+          "Use os resultados como ponto de partida para discussão com profissionais de la saúde. Agende consultas com especialistas recomendados para avaliação adequada.",
       },
     ],
   },
@@ -250,7 +250,7 @@ export default function MedicalDiagnosticTool() {
     setLastResponse("");
 
     try {
-      const response = await fetch("/api/medical", {
+      const response = await fetch("/api/wikipedia-medical", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -295,7 +295,7 @@ export default function MedicalDiagnosticTool() {
     setLastResponse("");
 
     try {
-      const response = await fetch("/api/medical", {
+      const response = await fetch("/api/wikipedia-medical", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -336,7 +336,6 @@ export default function MedicalDiagnosticTool() {
   return (
     <div className="min-h-screen bg-black">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="bg-black rounded-lg p-6 mb-4">
             <h1
@@ -348,7 +347,6 @@ export default function MedicalDiagnosticTool() {
           </div>
           <p className="text-xl text-gray-300 mb-4">{t.subtitle}</p>
 
-          {/* Language Selector */}
           <div className="flex items-center justify-center gap-2 mb-6">
             <Globe className="w-5 h-5 text-gray-400" />
             <div className="flex gap-2">
@@ -368,7 +366,6 @@ export default function MedicalDiagnosticTool() {
             </div>
           </div>
 
-          {/* Download Chat Button */}
           {chatHistory.length > 0 && (
             <div className="mb-4">
               <button
@@ -381,7 +378,6 @@ export default function MedicalDiagnosticTool() {
             </div>
           )}
 
-          {/* Disclaimer */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" />
@@ -390,7 +386,6 @@ export default function MedicalDiagnosticTool() {
           </div>
         </div>
 
-        {/* Tab Navigation */}
         <div className="flex bg-gray-900 rounded-lg p-1 mb-6 shadow-sm border border-gray-800">
           <button
             onClick={() => setActiveTab("diagnosis")}
@@ -427,7 +422,6 @@ export default function MedicalDiagnosticTool() {
           </button>
         </div>
 
-        {/* Content */}
         <div className="bg-gray-900 rounded-lg shadow-lg p-6 border border-gray-800">
           {activeTab === "diagnosis" ? (
             <div>
@@ -468,4 +462,7 @@ export default function MedicalDiagnosticTool() {
                   {t.questionPlaceholder.split("...")[0]}
                 </label>
                 <textarea
-                  value={question
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder={t.questionPlaceholder}
+                  className
