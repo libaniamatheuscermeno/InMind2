@@ -271,6 +271,7 @@ export default function MedicalDiagnosticTool() {
 
       setLastResponse(data.response);
 
+      // Add to chat history
       const newEntry = {
         type: "symptoms",
         input: symptoms,
@@ -316,6 +317,7 @@ export default function MedicalDiagnosticTool() {
 
       setLastResponse(data.response);
 
+      // Add to chat history
       const newEntry = {
         type: "question",
         input: question,
@@ -336,6 +338,7 @@ export default function MedicalDiagnosticTool() {
   return (
     <div className="min-h-screen bg-black">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Header */}
         <div className="text-center mb-8">
           <div className="bg-black rounded-lg p-6 mb-4">
             <h1
@@ -347,6 +350,7 @@ export default function MedicalDiagnosticTool() {
           </div>
           <p className="text-xl text-gray-300 mb-4">{t.subtitle}</p>
 
+          {/* Language Selector */}
           <div className="flex items-center justify-center gap-2 mb-6">
             <Globe className="w-5 h-5 text-gray-400" />
             <div className="flex gap-2">
@@ -366,6 +370,7 @@ export default function MedicalDiagnosticTool() {
             </div>
           </div>
 
+          {/* Download Chat Button */}
           {chatHistory.length > 0 && (
             <div className="mb-4">
               <button
@@ -378,6 +383,7 @@ export default function MedicalDiagnosticTool() {
             </div>
           )}
 
+          {/* Disclaimer */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" />
@@ -386,6 +392,7 @@ export default function MedicalDiagnosticTool() {
           </div>
         </div>
 
+        {/* Tab Navigation */}
         <div className="flex bg-gray-900 rounded-lg p-1 mb-6 shadow-sm border border-gray-800">
           <button
             onClick={() => setActiveTab("diagnosis")}
@@ -422,6 +429,7 @@ export default function MedicalDiagnosticTool() {
           </button>
         </div>
 
+        {/* Content */}
         <div className="bg-gray-900 rounded-lg shadow-lg p-6 border border-gray-800">
           {activeTab === "diagnosis" ? (
             <div>
@@ -465,4 +473,65 @@ export default function MedicalDiagnosticTool() {
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder={t.questionPlaceholder}
-                  className
+                  className="w-full h-32 p-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-white focus:border-transparent resize-none text-gray-200 placeholder-gray-500"
+                />
+              </div>
+
+              <button
+                onClick={askMedicalQuestion}
+                disabled={isAsking || !question.trim()}
+                className="w-full bg-white text-black py-3 px-6 rounded-lg font-medium hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isAsking ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                    {t.asking}
+                  </>
+                ) : (
+                  <>
+                    <Lightbulb className="w-5 h-5" />
+                    {t.askQuestion}
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-2xl font-bold text-gray-200 mb-6">
+                {t.faqTitle}
+              </h3>
+              <div className="space-y-4">
+                {t.faqs.map((faq, index) => (
+                  <div
+                    key={index}
+                    className="border border-gray-700 rounded-lg p-4 bg-gray-800"
+                  >
+                    <h4 className="font-semibold text-gray-200 mb-2">
+                      {faq.question}
+                    </h4>
+                    <p className="text-gray-400">{faq.answer}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Results - only show for diagnosis and questions tabs */}
+          {activeTab !== "faq" && lastResponse && (
+            <div className="mt-8 border-t border-gray-700 pt-6">
+              <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-white" />
+                {activeTab === "diagnosis" ? t.results : t.answer}
+              </h3>
+              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div className="prose prose-sm max-w-none text-gray-300 whitespace-pre-wrap">
+                  {lastResponse}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}”
