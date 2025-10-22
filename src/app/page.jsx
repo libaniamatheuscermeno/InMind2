@@ -465,4 +465,4 @@ export default function MedicalDiagnosticTool() {
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder={t.questionPlaceholder}
-                  className
+                  className="w-full h-32 p-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-white
