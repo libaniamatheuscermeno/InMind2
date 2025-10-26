@@ -2,183 +2,125 @@ export async function POST(request) {
   try {
     const { symptoms, question, language = "en" } = await request.json();
 
-    let searchTerms = [];
-    let analysisType = "";
+    // Figure out what kind of analysis we're doing
+    const isSymptom = !!symptoms;
+    const inputText = isSymptom ? symptoms : question;
 
-    // Identify if user input is symptoms or a question
-    if (symptoms) {
-      analysisType = "symptoms";
-      const symptomsLower = symptoms.toLowerCase();
+    // Build query for MedlinePlus — focused on neurological topics
+    const neurologicalKeywords = [
+      "Alzheimer",
+      "Parkinson",
+      "dementia",
+      "stroke",
+      "seizure",
+      "epilepsy",
+      "tremor",
+      "neuropathy",
+      "multiple sclerosis",
+      "migraine",
+      "brain injury",
+      "spinal cord",
+      "ataxia",
+      "aphasia",
+      "neurodegenerative",
+      "dystonia",
+      "memory loss",
+      "confusion",
+    ];
 
-      // Detect neurological keywords
-      const neurologicalKeywords = [
-        "memory loss",
-        "forgetfulness",
-        "tremor",
-        "shaking",
-        "alzheimer",
-        "parkinson",
-        "stroke",
-        "migraine",
-        "dementia",
-        "neuropathy",
-        "ataxia",
-        "seizure",
-        "speech problems",
-        "balance",
-        "gait",
-        "aphasia",
-      ];
+    // Find matching terms
+    const inputLower = inputText.toLowerCase();
+    const matched = neurologicalKeywords.filter((term) =>
+      inputLower.includes(term.toLowerCase())
+    );
 
-      searchTerms = neurologicalKeywords.filter(term =>
-        symptomsLower.includes(term.toLowerCase())
-      );
+    // If nothing matched, still try a general neurology query
+    const searchTerms =
+      matched.length > 0 ? matched.slice(0, 3) : ["neurological disorder"];
 
-      if (searchTerms.length === 0) {
-        searchTerms.push("neurological disorder", "neurodegenerative disease");
-      }
-
-    } else if (question) {
-      analysisType = "question";
-      const words = question.toLowerCase().split(" ");
-      const excluded = ["what", "how", "when", "where", "why", "is", "are", "the", "and"];
-      searchTerms = words.filter(w => w.length > 3 && !excluded.includes(w)).slice(0, 3);
-
-      if (searchTerms.length === 0) {
-        searchTerms.push("medical condition", "neurological health");
-      }
-    }
-
-    // Fetch Wikipedia data for first 2–3 terms
-    const wikipediaResults = [];
-    for (const term of searchTerms.slice(0, 3)) {
+    // Fetch MedlinePlus data (limit to 1-2 topics)
+    const results = [];
+    for (const term of searchTerms) {
       try {
-        const res = await fetch(
-          `https://${language}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(term)}`,
-          {
-            headers: { "User-Agent": "InMind-Medical-App/1.0 (educational)" },
-          }
-        );
+        const url = `https://connect.medlineplus.gov/service?mainSearchCriteria.v.c=${encodeURIComponent(
+          term
+        )}&knowledgeResponseType=application/json`;
 
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
-          wikipediaResults.push({
-            title: data.title,
-            extract: data.extract,
-            url: data.content_urls?.desktop?.page || "",
-          });
+          const topic = data?.feed?.entry?.[0];
+          if (topic) {
+            results.push({
+              title: topic.title?.[0]?._,
+              summary: topic.summary?.[0]?._,
+              url: topic.link?.[0]?.$.href || "",
+            });
+          }
         }
-      } catch {
-        // Ignore individual errors and continue
+      } catch (err) {
+        console.error("MedlinePlus fetch failed:", err);
       }
     }
 
-    // If Wikipedia gives nothing, use intelligent fallback
-    if (wikipediaResults.length === 0) {
-      const fallback = generateProfessionalFallback(analysisType, symptoms, question, language);
-      return Response.json({ response: fallback });
-    }
-
-    // Format final response
-    let formatted;
-    if (language === "es") {
-      formatted =
-        analysisType === "symptoms"
-          ? formatSpanishSymptomResponse(wikipediaResults, symptoms)
-          : formatSpanishQuestionResponse(wikipediaResults, question);
+    // If no valid results, fall back to professional summaries
+    let formattedResponse = "";
+    if (results.length > 0) {
+      formattedResponse = formatResults(language, isSymptom, inputText, results);
     } else {
-      formatted =
-        analysisType === "symptoms"
-          ? formatEnglishSymptomResponse(wikipediaResults, symptoms)
-          : formatEnglishQuestionResponse(wikipediaResults, question);
+      formattedResponse = formatFallback(language, isSymptom, inputText);
     }
 
-    return Response.json({ response: formatted });
-
+    return Response.json({ response: formattedResponse });
   } catch (err) {
-    console.error("Error in medical API:", err);
-    const fallback = generateProfessionalFallback("general", "", "", "en");
-    return Response.json({ response: fallback });
+    console.error("Error in medical route:", err);
+    return Response.json({
+      response:
+        "We're currently unable to retrieve medical information. Please try again later.",
+    });
   }
 }
 
-/* -----------------------  ENGLISH RESPONSES  ----------------------- */
-function formatEnglishSymptomResponse(results, symptoms) {
-  let res = `**Medical Summary Based on Reported Symptoms**\n\n`;
-  res += `**Symptoms Provided:** ${symptoms}\n\n`;
-  res += `**Possible Related Neurological Conditions:**\n\n`;
-
-  results.forEach((r, i) => {
-    res += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
-    if (r.url) res += `Learn more: ${r.url}\n\n`;
-  });
-
-  res += `**Disclaimer:** This information is for educational purposes and not a substitute for professional medical advice. Always consult a licensed healthcare provider.`;
-  return res;
-}
-
-function formatEnglishQuestionResponse(results, question) {
-  let res = `**Medical Information Response**\n\n`;
-  res += `**Question Asked:** ${question}\n\n`;
-  res += `**Relevant Findings:**\n\n`;
-
-  results.forEach((r, i) => {
-    res += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
-    if (r.url) res += `Source: ${r.url}\n\n`;
-  });
-
-  res += `**Disclaimer:** This educational content is not a medical diagnosis. Consult healthcare professionals for clinical guidance.`;
-  return res;
-}
-
-/* -----------------------  SPANISH RESPONSES  ----------------------- */
-function formatSpanishSymptomResponse(results, symptoms) {
-  let res = `**Resumen Médico Basado en los Síntomas Reportados**\n\n`;
-  res += `**Síntomas Proporcionados:** ${symptoms}\n\n`;
-  res += `**Posibles Condiciones Neurológicas Relacionadas:**\n\n`;
-
-  results.forEach((r, i) => {
-    res += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
-    if (r.url) res += `Más información: ${r.url}\n\n`;
-  });
-
-  res += `**Descargo de responsabilidad:** Esta información es educativa y no sustituye el diagnóstico médico profesional. Consulte siempre a un profesional de la salud.`;
-  return res;
-}
-
-function formatSpanishQuestionResponse(results, question) {
-  let res = `**Respuesta de Información Médica**\n\n`;
-  res += `**Pregunta Realizada:** ${question}\n\n`;
-  res += `**Hallazgos Relevantes:**\n\n`;
-
-  results.forEach((r, i) => {
-    res += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
-    if (r.url) res += `Fuente: ${r.url}\n\n`;
-  });
-
-  res += `**Descargo de responsabilidad:** Esta información es solo educativa. Consulte a profesionales médicos para orientación clínica.`;
-  return res;
-}
-
-/* -----------------------  PROFESSIONAL FALLBACK ----------------------- */
-function generateProfessionalFallback(type, symptoms, question, language) {
+function formatResults(language, isSymptom, inputText, results) {
   if (language === "es") {
-    return (
-      `**Análisis Médico Basado en la Información Proporcionada**\n\n` +
-      (type === "symptoms"
-        ? `Los síntomas mencionados sugieren la posibilidad de una afección neurológica. Es recomendable una evaluación médica detallada, preferiblemente por un neurólogo. Las pruebas diagnósticas pueden incluir estudios de imagen cerebral, análisis sanguíneos y evaluación cognitiva.\n\n`
-        : `La pregunta sugiere interés en información médica especializada. La orientación clínica precisa requiere una consulta presencial con un profesional de la salud.\n\n`) +
-      `**Recomendaciones:**\n- Programe una cita médica para evaluación diagnóstica\n- Lleve un registro detallado de los síntomas\n- Evite la automedicación\n\n` +
-      `**Nota:** Esta información tiene fines educativos y no sustituye la atención médica profesional.`
-    );
-  }
+    let response = isSymptom
+      ? `**Análisis de Síntomas Neurológicos**\n\n**Síntomas Reportados:** ${inputText}\n\n`
+      : `**Respuesta a la Consulta Médica Neurológica**\n\n**Pregunta:** ${inputText}\n\n`;
 
-  return (
-    `**Clinical Assessment Summary**\n\n` +
-    (type === "symptoms"
-      ? `The reported symptoms may be consistent with a neurological or systemic condition. A full evaluation, ideally by a neurologist, is recommended. Diagnostic steps may include MRI imaging, blood analysis, and cognitive testing.\n\n`
-      : `Your question appears to relate to medical or neurological concerns. For accurate information, clinical assessment by a healthcare provider is required.\n\n`) +
-    `**Recommendations:**\n- Schedule a medical consultation\n- Keep a detailed symptom log\n- Avoid self-diagnosis or self-treatment\n\n` +
-    `**Note:** This information is provided for educational purposes and does not replace medical evaluation or treatment.`
-  );
+    response += `**Condiciones Relacionadas Encontradas:**\n\n`;
+    results.forEach((r, i) => {
+      response += `**${i + 1}. ${r.title}**\n${r.summary}\n`;
+      if (r.url) response += `Más información: ${r.url}\n\n`;
+    });
+
+    response +=
+      `**Aviso Médico:** Esta información se proporciona con fines educativos y no reemplaza la evaluación profesional. Consulte a un neurólogo o médico calificado para un diagnóstico y tratamiento precisos.`;
+    return response;
+  } else {
+    let response = isSymptom
+      ? `**Neurological Symptom Analysis**\n\n**Reported Symptoms:** ${inputText}\n\n`
+      : `**Neurological Medical Inquiry Response**\n\n**Question:** ${inputText}\n\n`;
+
+    response += `**Related Conditions Found:**\n\n`;
+    results.forEach((r, i) => {
+      response += `**${i + 1}. ${r.title}**\n${r.summary}\n`;
+      if (r.url) response += `Learn more: ${r.url}\n\n`;
+    });
+
+    response +=
+      `**Medical Disclaimer:** This information is provided for educational purposes only and does not replace professional medical evaluation. Consult a neurologist or qualified physician for accurate diagnosis and treatment.`;
+    return response;
+  }
+}
+
+function formatFallback(language, isSymptom, inputText) {
+  if (language === "es") {
+    return isSymptom
+      ? `**Análisis de Síntomas Neurológicos**\n\nNo se encontraron resultados específicos para los síntomas descritos: "${inputText}".\n\nEs posible que los síntomas correspondan a condiciones neurológicas que requieren evaluación médica especializada. Se recomienda:\n\n- Consultar con un neurólogo para una valoración integral.\n- Registrar la evolución de los síntomas.\n- Buscar atención inmediata si los síntomas empeoran o aparecen de forma repentina.\n\n**Aviso Médico:** Esta información es educativa y no sustituye la consulta médica profesional.`
+      : `**Respuesta a la Consulta Médica Neurológica**\n\nNo se encontró información específica para la pregunta: "${inputText}".\n\nSin embargo, las consultas neurológicas deben ser evaluadas por profesionales médicos calificados. Se sugiere programar una cita con un especialista en neurología.\n\n**Aviso Médico:** Esta información se proporciona con fines educativos y no reemplaza la opinión de un médico.`;
+  } else {
+    return isSymptom
+      ? `**Neurological Symptom Analysis**\n\nNo direct medical results were found for the described symptoms: "${inputText}".\n\nThese symptoms may relate to neurological conditions that require professional evaluation. It is recommended to:\n\n- Schedule an appointment with a neurologist.\n- Monitor and document symptom changes.\n- Seek immediate medical attention if symptoms worsen or appear suddenly.\n\n**Medical Disclaimer:** This information is for educational purposes only and should not replace professional medical assessment.`
+      : `**Neurological Medical Inquiry Response**\n\nNo specific information was found for the question: "${inputText}".\n\nNeurological questions often require detailed professional evaluation. It is recommended to consult a neurologist for personalized guidance.\n\n**Medical Disclaimer:** This information is educational and does not replace advice from a licensed healthcare provider.`;
+  }
 }
