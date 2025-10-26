@@ -2,191 +2,183 @@ export async function POST(request) {
   try {
     const { symptoms, question, language = "en" } = await request.json();
 
-    const input = symptoms || question;
-    const isSymptom = !!symptoms;
+    let searchTerms = [];
+    let analysisType = "";
 
-    if (!input || input.trim().length === 0) {
-      return Response.json({ response: "Please enter a valid input." });
-    }
+    // Identify if user input is symptoms or a question
+    if (symptoms) {
+      analysisType = "symptoms";
+      const symptomsLower = symptoms.toLowerCase();
 
-    const searchTerms = extractMedicalTerms(input);
-    const wikipediaResults = [];
+      // Detect neurological keywords
+      const neurologicalKeywords = [
+        "memory loss",
+        "forgetfulness",
+        "tremor",
+        "shaking",
+        "alzheimer",
+        "parkinson",
+        "stroke",
+        "migraine",
+        "dementia",
+        "neuropathy",
+        "ataxia",
+        "seizure",
+        "speech problems",
+        "balance",
+        "gait",
+        "aphasia",
+      ];
 
-    for (const term of searchTerms.slice(0, 3)) {
-      try {
-        const response = await fetch(
-          `https://${language}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(term)}`,
-          {
-            headers: {
-              "User-Agent": "InMind-Medical-App/1.0 (educational-purpose)",
-            },
-          }
-        );
+      searchTerms = neurologicalKeywords.filter(term =>
+        symptomsLower.includes(term.toLowerCase())
+      );
 
-        if (response.ok) {
-          const summary = await response.json();
-          wikipediaResults.push({
-            title: summary.title,
-            extract: summary.extract,
-            url: summary.content_urls?.desktop?.page || "",
-          });
-        }
-      } catch {
-        // Ignore failed fetches (Render sometimes blocks them)
+      if (searchTerms.length === 0) {
+        searchTerms.push("neurological disorder", "neurodegenerative disease");
+      }
+
+    } else if (question) {
+      analysisType = "question";
+      const words = question.toLowerCase().split(" ");
+      const excluded = ["what", "how", "when", "where", "why", "is", "are", "the", "and"];
+      searchTerms = words.filter(w => w.length > 3 && !excluded.includes(w)).slice(0, 3);
+
+      if (searchTerms.length === 0) {
+        searchTerms.push("medical condition", "neurological health");
       }
     }
 
-    let formattedResponse = "";
+    // Fetch Wikipedia data for first 2–3 terms
+    const wikipediaResults = [];
+    for (const term of searchTerms.slice(0, 3)) {
+      try {
+        const res = await fetch(
+          `https://${language}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(term)}`,
+          {
+            headers: { "User-Agent": "InMind-Medical-App/1.0 (educational)" },
+          }
+        );
 
+        if (res.ok) {
+          const data = await res.json();
+          wikipediaResults.push({
+            title: data.title,
+            extract: data.extract,
+            url: data.content_urls?.desktop?.page || "",
+          });
+        }
+      } catch {
+        // Ignore individual errors and continue
+      }
+    }
+
+    // If Wikipedia gives nothing, use intelligent fallback
+    if (wikipediaResults.length === 0) {
+      const fallback = generateProfessionalFallback(analysisType, symptoms, question, language);
+      return Response.json({ response: fallback });
+    }
+
+    // Format final response
+    let formatted;
     if (language === "es") {
-      formattedResponse = formatSpanishResponse(
-        wikipediaResults,
-        input,
-        isSymptom
-      );
+      formatted =
+        analysisType === "symptoms"
+          ? formatSpanishSymptomResponse(wikipediaResults, symptoms)
+          : formatSpanishQuestionResponse(wikipediaResults, question);
     } else {
-      formattedResponse = formatEnglishResponse(
-        wikipediaResults,
-        input,
-        isSymptom
-      );
+      formatted =
+        analysisType === "symptoms"
+          ? formatEnglishSymptomResponse(wikipediaResults, symptoms)
+          : formatEnglishQuestionResponse(wikipediaResults, question);
     }
 
-    return Response.json({ response: formattedResponse });
-  } catch (error) {
-    console.error("Error in medical API:", error);
-    return Response.json({
-      response:
-        "Something went wrong fetching medical information. Please try again later.",
-    });
+    return Response.json({ response: formatted });
+
+  } catch (err) {
+    console.error("Error in medical API:", err);
+    const fallback = generateProfessionalFallback("general", "", "", "en");
+    return Response.json({ response: fallback });
   }
 }
 
-function extractMedicalTerms(text) {
-  const keywords = [
-    "alzheimer",
-    "parkinson",
-    "stroke",
-    "dementia",
-    "migraine",
-    "neuropathy",
-    "tremor",
-    "seizure",
-    "balance",
-    "memory",
-    "ataxia",
-    "aphasia",
-    "dysarthria",
-  ];
-  const textLower = text.toLowerCase();
-  const found = keywords.filter((k) => textLower.includes(k));
-  return found.length ? found : ["neurological disorder"];
+/* -----------------------  ENGLISH RESPONSES  ----------------------- */
+function formatEnglishSymptomResponse(results, symptoms) {
+  let res = `**Medical Summary Based on Reported Symptoms**\n\n`;
+  res += `**Symptoms Provided:** ${symptoms}\n\n`;
+  res += `**Possible Related Neurological Conditions:**\n\n`;
+
+  results.forEach((r, i) => {
+    res += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
+    if (r.url) res += `Learn more: ${r.url}\n\n`;
+  });
+
+  res += `**Disclaimer:** This information is for educational purposes and not a substitute for professional medical advice. Always consult a licensed healthcare provider.`;
+  return res;
 }
 
-// ---------------- ENGLISH FORMATTER ----------------
-function formatEnglishResponse(results, input, isSymptom) {
-  let response = `**Medical Information**\n\n`;
-  response += `**Your Input:** ${input}\n\n`;
+function formatEnglishQuestionResponse(results, question) {
+  let res = `**Medical Information Response**\n\n`;
+  res += `**Question Asked:** ${question}\n\n`;
+  res += `**Relevant Findings:**\n\n`;
 
-  if (results.length > 0) {
-    response += `**Related Information Found:**\n\n`;
-    results.forEach((r, i) => {
-      response += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
-      if (r.url) response += `Source: ${r.url}\n\n`;
-    });
-  } else {
-    response += `**No direct results found.**\n\n`;
-    response += generalEnglishAdvice(input, isSymptom);
-  }
+  results.forEach((r, i) => {
+    res += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
+    if (r.url) res += `Source: ${r.url}\n\n`;
+  });
 
-  response += `\n**Disclaimer:** This information is for educational purposes only and should not replace professional medical advice.`;
-  return response;
+  res += `**Disclaimer:** This educational content is not a medical diagnosis. Consult healthcare professionals for clinical guidance.`;
+  return res;
 }
 
-function generalEnglishAdvice(input, isSymptom) {
-  let text = "";
-  const l = input.toLowerCase();
+/* -----------------------  SPANISH RESPONSES  ----------------------- */
+function formatSpanishSymptomResponse(results, symptoms) {
+  let res = `**Resumen Médico Basado en los Síntomas Reportados**\n\n`;
+  res += `**Síntomas Proporcionados:** ${symptoms}\n\n`;
+  res += `**Posibles Condiciones Neurológicas Relacionadas:**\n\n`;
 
-  if (isSymptom) {
-    if (l.includes("memory")) {
-      text +=
-        "Memory-related issues can stem from stress, sleep problems, or neurological conditions like dementia.\n";
-    } else if (l.includes("tremor") || l.includes("shake")) {
-      text +=
-        "Tremors may be caused by Parkinson’s disease, essential tremor, or medication effects.\n";
-    } else if (l.includes("balance") || l.includes("walk")) {
-      text +=
-        "Balance issues may come from ear disorders or neurological conditions like ataxia.\n";
-    } else {
-      text +=
-        "These symptoms could relate to various neurological issues. Please consult a neurologist for evaluation.\n";
-    }
-  } else {
-    if (l.includes("treatment")) {
-      text +=
-        "Treatment varies depending on diagnosis and should be discussed with a doctor.\n";
-    } else if (l.includes("diagnosis")) {
-      text +=
-        "Diagnosis usually involves medical exams, tests, and imaging under professional supervision.\n";
-    } else {
-      text +=
-        "Your question may require medical evaluation for an accurate answer.\n";
-    }
-  }
+  results.forEach((r, i) => {
+    res += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
+    if (r.url) res += `Más información: ${r.url}\n\n`;
+  });
 
-  return text;
+  res += `**Descargo de responsabilidad:** Esta información es educativa y no sustituye el diagnóstico médico profesional. Consulte siempre a un profesional de la salud.`;
+  return res;
 }
 
-// ---------------- SPANISH FORMATTER ----------------
-function formatSpanishResponse(results, input, isSymptom) {
-  let response = `**Información Médica**\n\n`;
-  response += `**Entrada del Usuario:** ${input}\n\n`;
+function formatSpanishQuestionResponse(results, question) {
+  let res = `**Respuesta de Información Médica**\n\n`;
+  res += `**Pregunta Realizada:** ${question}\n\n`;
+  res += `**Hallazgos Relevantes:**\n\n`;
 
-  if (results.length > 0) {
-    response += `**Información Relacionada Encontrada:**\n\n`;
-    results.forEach((r, i) => {
-      response += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
-      if (r.url) response += `Fuente: ${r.url}\n\n`;
-    });
-  } else {
-    response += `**No se encontraron resultados directos.**\n\n`;
-    response += generalSpanishAdvice(input, isSymptom);
-  }
+  results.forEach((r, i) => {
+    res += `**${i + 1}. ${r.title}**\n${r.extract}\n`;
+    if (r.url) res += `Fuente: ${r.url}\n\n`;
+  });
 
-  response += `\n**Descargo de Responsabilidad:** Esta información es solo con fines educativos y no reemplaza el consejo médico profesional.`;
-  return response;
+  res += `**Descargo de responsabilidad:** Esta información es solo educativa. Consulte a profesionales médicos para orientación clínica.`;
+  return res;
 }
 
-function generalSpanishAdvice(input, isSymptom) {
-  let text = "";
-  const l = input.toLowerCase();
-
-  if (isSymptom) {
-    if (l.includes("memoria")) {
-      text +=
-        "Los problemas de memoria pueden deberse al estrés, la falta de sueño o condiciones neurológicas como la demencia.\n";
-    } else if (l.includes("temblo") || l.includes("sacudi")) {
-      text +=
-        "Los temblores pueden estar relacionados con la enfermedad de Parkinson, temblor esencial o efectos secundarios de medicamentos.\n";
-    } else if (l.includes("equilibrio") || l.includes("caminar")) {
-      text +=
-        "Los problemas de equilibrio pueden deberse a trastornos del oído interno o condiciones neurológicas como la ataxia.\n";
-    } else {
-      text +=
-        "Estos síntomas podrían estar relacionados con diversos trastornos neurológicos. Consulte a un neurólogo para una evaluación profesional.\n";
-    }
-  } else {
-    if (l.includes("tratamiento")) {
-      text +=
-        "El tratamiento varía según el diagnóstico y debe discutirse con un médico.\n";
-    } else if (l.includes("diagnóstico")) {
-      text +=
-        "El diagnóstico generalmente implica exámenes médicos, pruebas y estudios de imagen realizados por profesionales.\n";
-    } else {
-      text +=
-        "Su pregunta puede requerir una evaluación médica para una respuesta precisa.\n";
-    }
+/* -----------------------  PROFESSIONAL FALLBACK ----------------------- */
+function generateProfessionalFallback(type, symptoms, question, language) {
+  if (language === "es") {
+    return (
+      `**Análisis Médico Basado en la Información Proporcionada**\n\n` +
+      (type === "symptoms"
+        ? `Los síntomas mencionados sugieren la posibilidad de una afección neurológica. Es recomendable una evaluación médica detallada, preferiblemente por un neurólogo. Las pruebas diagnósticas pueden incluir estudios de imagen cerebral, análisis sanguíneos y evaluación cognitiva.\n\n`
+        : `La pregunta sugiere interés en información médica especializada. La orientación clínica precisa requiere una consulta presencial con un profesional de la salud.\n\n`) +
+      `**Recomendaciones:**\n- Programe una cita médica para evaluación diagnóstica\n- Lleve un registro detallado de los síntomas\n- Evite la automedicación\n\n` +
+      `**Nota:** Esta información tiene fines educativos y no sustituye la atención médica profesional.`
+    );
   }
 
-  return text;
+  return (
+    `**Clinical Assessment Summary**\n\n` +
+    (type === "symptoms"
+      ? `The reported symptoms may be consistent with a neurological or systemic condition. A full evaluation, ideally by a neurologist, is recommended. Diagnostic steps may include MRI imaging, blood analysis, and cognitive testing.\n\n`
+      : `Your question appears to relate to medical or neurological concerns. For accurate information, clinical assessment by a healthcare provider is required.\n\n`) +
+    `**Recommendations:**\n- Schedule a medical consultation\n- Keep a detailed symptom log\n- Avoid self-diagnosis or self-treatment\n\n` +
+    `**Note:** This information is provided for educational purposes and does not replace medical evaluation or treatment.`
+  );
 }
